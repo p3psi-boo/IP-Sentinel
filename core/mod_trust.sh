@@ -19,10 +19,10 @@ LOG_FILE="${INSTALL_DIR}/logs/sentinel.log"
 REGION_JSON_FILE="${INSTALL_DIR}/data/regions/${REGION}.json"
 
 # 2. 动态获取配置 (解耦核心)
-# 兼容旧节点：如果本地没有 json，自动拉取最新的云端配置
+# 兼容旧节点：如果本地没有 json，自动拉取最新的云端配置 (强制遵循锚点协议)
 if [ ! -f "$REGION_JSON_FILE" ]; then
     mkdir -p "${INSTALL_DIR}/data/regions"
-    curl -sL "${REPO_RAW_URL}/data/regions/${REGION}.json" -o "$REGION_JSON_FILE"
+    curl -${IP_PREF:-4} -sL "${REPO_RAW_URL}/data/regions/${REGION}.json" -o "$REGION_JSON_FILE"
 fi
 
 # 使用 jq 将 json 中的网址数组安全地读入 Bash 数组
@@ -64,7 +64,8 @@ for ((i=1; i<=STEP_COUNT; i++)); do
     # 随机抽取本地区域权威网址
     TARGET_URL=${TRUST_URLS[$RANDOM % ${#TRUST_URLS[@]}]}
     
-    HTTP_CODE=$(curl -A "$CURRENT_UA" \
+    # [v3.0.1修复] 注入高权重流量时，强制从绑定的 IPv4 或 IPv6 隧道出网
+    HTTP_CODE=$(curl -${IP_PREF:-4} -A "$CURRENT_UA" \
         -H "Accept: text/html,application/xhtml+xml;q=0.9,image/avif,image/webp,*/*;q=0.8" \
         -H "Accept-Language: en-US,en;q=0.9" \
         -H "Sec-Fetch-Dest: document" \
