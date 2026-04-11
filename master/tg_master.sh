@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==========================================================
-# 脚本名称: tg_master.sh (Master 端调度枢纽 V2.0 模块化适配版)
+# 脚本名称: tg_master.sh (Master 端调度枢纽 V3.0.4 动态签名版)
 # 核心功能: 监听 TG、操作 SQLite、Webhook 精准调度、403权限拦截、僵尸节点清理
 # ==========================================================
 
@@ -34,6 +34,25 @@ edit_msg() {
 db_exec() {
     sqlite3 "$DB_FILE" "$1"
 }
+
+# ================== [v3.0.4 核心: 动态 HMAC 签名生成器] ==================
+# 用法: generate_signed_url <IP> <PORT> <PATH>
+generate_signed_url() {
+    local target_ip=$1
+    local target_port=$2
+    local action_path=$3
+    local current_t=$(date +%s)
+    
+    # 构建加密载荷: "路径:时间戳"
+    local payload="${action_path}:${current_t}"
+    
+    # 使用 CHAT_ID 作为密钥，生成 SHA256 HMAC 签名
+    local signature=$(echo -n "$payload" | openssl dgst -sha256 -hmac "$CHAT_ID" | awk '{print $NF}')
+    
+    # 返回最终带签名的 URL
+    echo "http://${target_ip}:${target_port}${action_path}?t=${current_t}&sign=${signature}"
+}
+# ========================================================================
 
 # --- 核心轮询循环 ---
 while true; do
@@ -106,11 +125,28 @@ while true; do
                     else
                         send_msg "$CHAT_ID" "📢 **司令部指令下达：正在召唤所有哨兵回传简报...**"
                         echo "$NODE_DATA" | while IFS='|' read -r NNAME AIP APORT; do
-                            # [v3.0.2 紧急加固] 批量下发战报时，必须同步追加 ?auth 鉴权令牌，防止被 Agent 拒绝
-                            curl -s -m 5 "http://${AIP}:${APORT}/trigger_report?auth=${CHAT_ID}" > /dev/null &
+                            # 🛡️ [v3.0.4] 动态签名防重放批量下发
+                            TARGET_URL=$(generate_signed_url "$AIP" "$APORT" "/trigger_report")
+                            curl -s -m 5 "$TARGET_URL" > /dev/null &
                         done
                     fi
                     ;;
+
+                # ================== [补充缺失的全节点一键维护功能] ==================
+                "all_run")
+                    NODE_DATA=$(db_exec "SELECT node_name, agent_ip, agent_port FROM nodes WHERE chat_id='$CHAT_ID';")
+                    if [ -z "$NODE_DATA" ]; then
+                        send_msg "$CHAT_ID" "⚠️ 您名下暂无在线节点。"
+                    else
+                        send_msg "$CHAT_ID" "📢 **司令部指令下达：正在唤醒所有哨兵执行系统维护...**"
+                        echo "$NODE_DATA" | while IFS='|' read -r NNAME AIP APORT; do
+                            # 🛡️ [v3.0.4] 动态签名防重放批量下发 (维护模块)
+                            TARGET_URL=$(generate_signed_url "$AIP" "$APORT" "/trigger_run")
+                            curl -s -m 5 "$TARGET_URL" > /dev/null &
+                        done
+                    fi
+                    ;;
+                # ====================================================================
 
                 "list_nodes")
                     NODE_LIST=$(db_exec "SELECT node_name FROM nodes WHERE chat_id='$CHAT_ID';")
@@ -174,8 +210,9 @@ while true; do
                             send_msg "$CHAT_ID" "⏳ 正在向 \`$TARGET_NODE\` ($AGENT_IP) 下发 [$ACTION_TYPE] 指令，请稍候..."
                         fi
                         
-                        # 触发 Webhook(v3.0.2 避免DDoS攻击加固)
-                        RESPONSE=$(curl -s -m 5 "http://${AGENT_IP}:${AGENT_PORT}/trigger_${ACTION_TYPE}?auth=${CHAT_ID}" || echo "FAILED")
+                        # 🛡️ [v3.0.4] 动态签名生成与触发 (防重放与防篡改)
+                        TARGET_URL=$(generate_signed_url "$AGENT_IP" "$AGENT_PORT" "/trigger_${ACTION_TYPE}")
+                        RESPONSE=$(curl -s -m 5 "$TARGET_URL" || echo "FAILED")
                         
                         # 结果判定
                         if [ "$RESPONSE" == "FAILED" ]; then

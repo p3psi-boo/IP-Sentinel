@@ -55,18 +55,24 @@ if [ -n "$AGENT_IP" ]; then
     fi
 fi
 
-# 3. 启动轻量级 Python3 Webhook 监听服务 (带 403 权限校验路由)
+# 3. 启动轻量级 Python3 Webhook 监听服务 (v3.0.4 动态 HMAC 签名防重放)
 cat > "${INSTALL_DIR}/core/webhook.py" << 'EOF'
 import http.server
 import socketserver
 import subprocess
 import sys
 import os
-import html # [v3.0.2+ 修复] 用于安全转义日志中的特殊字符
+import html
+# ================== [v3.0.4 新增密码学与解析依赖] ==================
+import urllib.parse
+import hmac
+import hashlib
+import time
+# ====================================================================
 
 PORT = int(sys.argv[1])
 
-# 🛡️ [v3.0.2 紧急加固] 提取全局鉴权 Token (利用 CHAT_ID 作为 PSK 预共享密钥)
+# 🛡️ 提取全局鉴权 Token (利用 CHAT_ID 作为 PSK 预共享密钥)
 AUTH_TOKEN = ""
 if os.path.exists('/opt/ip_sentinel/config.conf'):
     with open('/opt/ip_sentinel/config.conf', 'r') as f:
@@ -78,16 +84,49 @@ if os.path.exists('/opt/ip_sentinel/config.conf'):
 
 class AgentHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        # 🛡️ 鉴权拦截器：防非法扫描与 DDoS 资源耗尽
-        if AUTH_TOKEN and f"auth={AUTH_TOKEN}" not in self.path:
-            self.send_response(401)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"401 Unauthorized: Access Denied\n")
-            return
+        # 🛡️ [v3.0.4 核心] URL 解析与动态 HMAC-SHA256 签名校验
+        parsed = urllib.parse.urlparse(self.path)
+        req_path = parsed.path
+        
+        if AUTH_TOKEN:
+            query = urllib.parse.parse_qs(parsed.query)
+            req_t = query.get('t', [''])[0]
+            req_sign = query.get('sign', [''])[0]
+            
+            # 校验 1：参数是否齐全
+            if not req_t or not req_sign:
+                self.send_response(401)
+                self.end_headers()
+                self.wfile.write(b"401 Unauthorized: Missing Signature\n")
+                return
+                
+            try:
+                # 校验 2：时间戳防重放 (误差 ±60秒 内有效，拒绝隔夜抓包重放)
+                if abs(int(time.time()) - int(req_t)) > 60:
+                    self.send_response(401)
+                    self.end_headers()
+                    self.wfile.write(b"401 Unauthorized: Request Expired\n")
+                    return
+            except ValueError:
+                self.send_response(401)
+                self.end_headers()
+                return
+                
+            # 校验 3：HMAC 数据完整性与身份合法性校验
+            msg = f"{req_path}:{req_t}".encode('utf-8')
+            expected_sign = hmac.new(AUTH_TOKEN.encode('utf-8'), msg, hashlib.sha256).hexdigest()
+            
+            # 使用 compare_digest 防御时序攻击
+            if not hmac.compare_digest(expected_sign, req_sign):
+                self.send_response(401)
+                self.end_headers()
+                self.wfile.write(b"401 Unauthorized: Signature Mismatch\n")
+                return
 
-        # 路由 1: Google 区域纠偏 (由于 URL 带有 auth 参数，必须由 == 改为 startswith)
-        if self.path.startswith('/trigger_google') or self.path.startswith('/trigger_run'):
+        # ================== 路由分发 (恢复为安全的精确匹配) ==================
+        
+        # 路由 1: Google 区域纠偏
+        if req_path == '/trigger_google' or req_path == '/trigger_run':
             if os.path.exists('/opt/ip_sentinel/core/mod_google.sh'):
                 self.send_response(200)
                 self.send_header("Content-type", "text/plain")
@@ -101,7 +140,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(b"403 Forbidden: Google Module Disabled\n")
 
         # 路由 2: IP 信用净化
-        elif self.path.startswith('/trigger_trust'):
+        elif req_path == '/trigger_trust':
             if os.path.exists('/opt/ip_sentinel/core/mod_trust.sh'):
                 self.send_response(200)
                 self.send_header("Content-type", "text/plain")
@@ -115,22 +154,21 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(b"403 Forbidden: Trust Module Disabled\n")
 
         # 路由 3: 触发战报推送
-        elif self.path.startswith('/trigger_report'):
+        elif req_path == '/trigger_report':
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
             self.end_headers()
             self.wfile.write(b"Action Accepted: tg_report\n")
             subprocess.Popen(['bash', '/opt/ip_sentinel/core/tg_report.sh'])
 
-        # 路由 4: 抓取并回传实时日志 (v3.0.2 鲁棒性增强版)
-        elif self.path.startswith('/trigger_log'):
+        # 路由 4: 抓取并回传实时日志
+        elif req_path == '/trigger_log':
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
             self.end_headers()
             self.wfile.write(b"Action Accepted: fetch_log\n")
             
             import urllib.request
-            import urllib.parse
             
             try:
                 config = {}
@@ -142,36 +180,31 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                                 key, val = line.split('=', 1)
                                 config[key] = val.strip('"\'')
                 
-                # 🛡️ 核心修复：HTML 转义防止 Telegram 报错
                 log_data = "日志文件不存在或为空"
                 log_path = '/opt/ip_sentinel/logs/sentinel.log'
                 if os.path.exists(log_path):
                     with open(log_path, 'r', errors='ignore') as f:
                         lines = f.readlines()
                         if lines:
-                            # 抓取最后 15 行并进行转义，确保 [ ] & < > 不会破坏消息
                             log_data = html.escape("".join(lines[-15:]))
                 
                 node_name = subprocess.check_output(['hostname']).decode('utf-8').strip()[:15]
-                
-                # 🛡️ 核心修复：使用 HTML 模式，日志显示更整齐且稳定
                 text_msg = f"📄 <b>[{node_name}] 实时运行日志:</b>\n<pre><code>{log_data}</code></pre>"
+                
                 data = urllib.parse.urlencode({
                     'chat_id': config.get('CHAT_ID', ''),
                     'text': text_msg,
                     'parse_mode': 'HTML'
                 }).encode('utf-8')
                 
-                # 🛡️ 核心修复：补全 UA 头，通过安全网关校验
                 req = urllib.request.Request(
                     config.get('TG_API_URL', ''), 
                     data=data,
-                    headers={'User-Agent': 'IP-Sentinel-Agent/3.0.2'}
+                    headers={'User-Agent': 'IP-Sentinel-Agent/3.0.4'}
                 )
                 urllib.request.urlopen(req, timeout=10)
                 
             except Exception as e:
-                # 发生错误时在本地打印，便于长官排查
                 print(f"Log transmission failed: {e}")
             
         else:
