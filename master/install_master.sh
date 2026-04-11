@@ -29,6 +29,11 @@ if [ "$ACTION_CHOICE" == "2" ]; then
     exit 0
 fi
 
+# ================== [v3.1.1 延续: 安装前环境纯净度清理] ==================
+echo -e "\n⏳ 正在清理旧版 Master 守护进程 (绝对安全保留 SQLite 数据库)..."
+pkill -9 -f "tg_master.sh" >/dev/null 2>&1 || true
+# =======================================================================
+
 # 1. 环境依赖安装
 echo "[1/4] 安装核心依赖 (curl, jq, sqlite3)..."
 if [ -f /etc/debian_version ]; then
@@ -88,3 +93,14 @@ echo "========================================================"
 echo "🎉 Master 控制中枢部署完成！"
 echo "🤖 机器人现已开始全局接客，等待边缘节点注册。"
 echo "========================================================"
+
+# ================== [v3.1.2 新增: 玻璃房透明装机统计] ==================
+echo -e "\n📡 正在向开源社区汇报装机量 (完全匿名，不收集IP)..."
+MASTER_COUNT=$(curl -s -m 3 "https://ip-sentinel-count.samanthaestime296.workers.dev/ping/master" || echo "")
+
+if [ -n "$MASTER_COUNT" ] && [[ "$MASTER_COUNT" =~ ^[0-9]+$ ]]; then
+    echo -e "\033[32m✅ 感谢您成为全球第 ${MASTER_COUNT} 名 IP-Sentinel 指挥官！\033[0m"
+else
+    echo -e "\033[32m✅ 感谢您建立 IP-Sentinel 司令部！\033[0m"
+fi
+echo -e "\n"
