@@ -1,14 +1,17 @@
 #!/bin/bash
 
 # ==========================================================
-# 脚本名称: mod_trust.sh (IP 信用净化模块 V2.0 数据解耦版)
-# 核心功能: 动态读取云端/本地 JSON 规则池，模拟访问高权重网站稀释恶意流量
+# 脚本名称: mod_trust.sh (IP 信用净化模块 V3.1.4 拓扑自适应版)
+# 核心功能: 动态扫描本地 LBS 冷数据，提取权威白名单，执行流量净化
 # ==========================================================
 
 INSTALL_DIR="/opt/ip_sentinel"
 CONFIG_FILE="${INSTALL_DIR}/config.conf"
 UA_FILE="${INSTALL_DIR}/data/user_agents.txt"
-REPO_RAW_URL="https://git.94211762.xyz/hotyue/IP-Sentinel/raw/branch/main"
+# 你的 GitHub 仓库 Raw 数据直链前缀
+REPO_RAW_URL="https://raw.githubusercontent.com/hotyue/IP-Sentinel/main"
+# 临时改为私库地址用于测试
+# REPO_RAW_URL="https://git.94211762.xyz/hotyue/IP-Sentinel/raw/branch/main"
 
 # 1. 基础环境校验
 [ ! -f "$CONFIG_FILE" ] && exit 1
@@ -16,11 +19,14 @@ source "$CONFIG_FILE"
 
 REGION=${REGION_CODE:-"US"}
 LOG_FILE="${INSTALL_DIR}/logs/sentinel.log"
-REGION_JSON_FILE="${INSTALL_DIR}/data/regions/${REGION}.json"
 
-# 2. 动态获取配置 (解耦核心)
-# 兼容旧节点：如果本地没有 json，自动拉取最新的云端配置 (强制遵循锚点协议)
-if [ ! -f "$REGION_JSON_FILE" ]; then
+# 2. 动态获取配置 (V3 拓扑自适应与兜底)
+# 利用 find 穿透多级子目录，自动抓取安装时落地的那份专属 json 文件
+REGION_JSON_FILE=$(find "${INSTALL_DIR}/data/regions" -name "*.json" 2>/dev/null | head -n 1)
+
+# 兼容旧节点兜底：如果本地真没找到 json，回退到拉取云端通用大区配置
+if [ -z "$REGION_JSON_FILE" ] || [ ! -f "$REGION_JSON_FILE" ]; then
+    REGION_JSON_FILE="${INSTALL_DIR}/data/regions/${REGION}.json"
     mkdir -p "${INSTALL_DIR}/data/regions"
     curl -${IP_PREF:-4} -sL "${REPO_RAW_URL}/data/regions/${REGION}.json" -o "$REGION_JSON_FILE"
 fi
