@@ -1,14 +1,21 @@
 #!/bin/bash
 
 # ==========================================================
-# 脚本名称: uninstall_master.sh (IP-Sentinel Master 一键卸载脚本)
+# 脚本名称: uninstall_master.sh (IP-Sentinel Master 一键卸载脚本 v3.4.0)
 # 核心功能: 终止调度进程、清理看门狗定时任务、抹除数据库与配置
 # ==========================================================
 
 MASTER_DIR="/opt/ip_sentinel_master"
+CONF_FILE="${MASTER_DIR}/master.conf"
 
 echo "========================================================"
 echo "      🗑️ 准备卸载 IP-Sentinel Master (控制中枢)"
+
+# [v3.4.0 优化] 卸载前读取并播报中枢版本号
+if [ -f "$CONF_FILE" ]; then
+    MASTER_VER=$(grep "^MASTER_VERSION=" "$CONF_FILE" | cut -d'"' -f2)
+    [ -n "$MASTER_VER" ] && echo "        📍 目标版本: v${MASTER_VER}"
+fi
 echo "========================================================"
 
 echo -e "\n⚠️ 警告: 此操作将永久删除包含所有节点档案的 SQLite 数据库！"
