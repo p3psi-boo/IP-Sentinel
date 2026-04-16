@@ -1,144 +1,189 @@
-# 🛡️ IP-Sentinel (分布式 IP 哨兵集群)
+# IP-Sentinel
 
-![Agent Installs](https://img.shields.io/endpoint?url=https://ip-sentinel-count.samanthaestime296.workers.dev/stats/agent)
-![Master Commands](https://img.shields.io/endpoint?url=https://ip-sentinel-count.samanthaestime296.workers.dev/stats/master)
-![License](https://img.shields.io/github/license/hotyue/IP-Sentinel)
+> **注意**：当前版本为单机自治版，每个 VPS 独立运行。没有远程控制节点，也无需注册。
 
-> **一个极度轻量、零感知、支持中枢遥控的 VPS IP 自动化养护与区域纠偏引擎。**
+IP-Sentinel 是一套在单台 VPS 上自动运行的 IP 养护脚本，通过模拟真实用户访问 Google 和白名单站点，纠正 IP 地理定位误判问题。
 
-📢 官方战术交流频道: 🛰️ [IP-Sentinel Matrix](https://t.me/IP_Sentinel_Matrix)
+## 快速开始
 
-专为解决 VPS IP 被 Google 等数据库错误定位到中国大陆/香港（俗称“送中”）等问题而生。IP-Sentinel 已从单机脚本全面跃升为 **Master-Agent 分布式架构**。它像影子一样潜伏在全球各地的服务器后台，通过高度拟真的真实用户行为为你默默积累 IP 权重，并允许你通过 Telegram 随时随地对整个舰队进行毫秒级“点名”与“遥控”。
-
-## ✨ 核心极客特性
-
-- 🎯 **版本锚点与路由中枢 (Version-Linked Epoch)**：v3.4.0 架构大改。彻底告别“盲盒式更新”，全系引入全局版本号机制。边缘节点具备“身份自知”能力，安装脚本根据本地版本执行精准的路由跳转。实现从远古版本（v3.3.1及以前）到现代架构的无损、无感、智能化跃迁。
-
-- 📡 **OTA 实时版本探针 (Version-Aware Radar)**：v3.4.0 体验升级。边缘哨兵现已接入云端“北极星”校准。每日战报自动扫描 GitHub 最新发布状态，发现版本落后即刻在 Telegram 战报底部亮起 OTA 预警，彻底消除长官与哨兵间的信息差。
-
- - 🗺️ **全球拓扑矩阵 (Global Nexus)**：v3.1 跨洲际跃升。守护版图现已横跨亚、欧、美三大洲（美、日、英、德、法、新、港）。为每个国家注入极其硬核的“原生本地化”搜索词库与本土高权重站点（如政府、权威媒体、高铁网），真正实现“拟真融入”。
-
- - 👻 **设备资产持久化 (Hash-Seeded Persona)**：v3.2 核心换代。彻底摒弃传统的“随机抽取指纹”，引入基于节点物理 IP 的哈希锚定引擎。利用不可变哈希种子，为您的每台 VPS 在千万级指纹库中永久锁定 3 个绝对专属设备（如固定表现为 1台 Mac、1台 iPhone、1台 PC 交替上网）。完美构建高权重真实家庭内网画像，根除“僵尸网络”同质化特征！
-
- - 🏭 **自动化指纹兵工厂 (Automated UA Factory)**：依托 GitHub Actions CI/CD 流水线，每月 1 日无人值守全自动生成 4000+ 带绝对物理分区的真实终端设备数据。配合边缘节点的守护进程静默拉取，实现千万级指纹资产的“自动驾驶”级演进。
-
- - 📡 **OTA 动态活体词库 (Dynamic Trends)**：v3.3.0 跨时代跃升。彻底废弃静态搜索词，引入 GitHub Actions 云端流水线。每天自动抓取美、日、德、英等全战区当日 Google 热搜榜单，并通过边缘节点每日静默同步，让您的 IP 搜索行为永远贴合当地当天的真实网络脉搏。
-
- - 🔀 **智能错峰调度 (Thundering Herd Mitigation)**：v3.3.0 架构升级。首创节点部署时间戳锚定逻辑。边缘节点按需智能分频（每日拉取几百行轻量词库，每月按 30 天周期错峰拉取千万级指纹库），完美化解“惊群效应”，彻底抹平统一升级时的数据并发特征，隐匿于无形。
-
- - 🖧 **底层路由死锁 (Hard-Bind Routing)**：v3.2.1 热修复升级。底层探测引擎强力接管 curl 核心参数 (--interface)，强制将发出的每一滴伪装流量死死绑定在您设定的物理网卡或隧道 IP 上，彻底杜绝双栈或多网卡环境下的流量溢出漏洞。
-
- - 🎯 **多级容灾与高精度探针 (High-Precision Probe)**：v3.2.2 底层重构。重写战报模块与底层协议自适应逻辑，植入多级 ISP 容灾探针链路，并按“底层数据共识原则”智能清洗冗余 AS 号。确保在纯 V6、隧道或弱网环境下，数据获取依然 100% 精准畅通。
-
- - 🔄 **平滑热更新装甲 (Smooth Upgrade Engine)**：v3.2.2 体验进化。全系植入状态机嗅探逻辑。无论是 Master 司令部还是 Agent 边缘节点，再次执行部署脚本时将自动识别并继承历史配置、SQLite 数据库与锚定 IP，一键回车即可瞬间完成无损换代，告别繁琐的重复配置。
- 
- - ☁️ **云端中枢 (Public Master)**：引入官方公共机器人 @OmniBeacon_bot，新手无需部署 Master 司令部，部署 Agent 时一键回车即可调用官方加密网关，30 秒极速入伍！
-
- - 🧠 **分布式中枢 (Master-Agent)**：对于硬核极客，支持私有化部署。一台 Master 主控集成 SQLite 数据库，统管无数台 Agent 边缘节点，确保数据绝对私有。
-
- - 🔒 **叹息之墙 (Zero-Trust HMAC)**：全面废弃明文 Token，底层通讯引入 时间戳 + HMAC-SHA256 军用级动态签名。指令有效期仅 60 秒（阅后即焚），彻底免疫中间人抓包、重放攻击与端口爆破。
-
- - 🛡️ **工业级并发与自净引擎**：底层 Webhook 采用多线程模型彻底免疫慢速耗尽攻击；独创“智能清道夫”逻辑，覆盖安装/升级时自动绞杀僵尸进程与冗余定时任务，绝对纯净，告别玄学冲突。
-
- - 🎮 **TG 战术面板 (Command Center)**：无需记忆繁琐命令，全 Inline Keyboard 交互。支持一键下发伪装指令、一键索要精准战报、毫秒级抓取边缘节点实时运行日志。
-
- - 👁️‍🗨️ **玻璃房透明遥测 (Glasshouse Telemetry)**：引入基于 Cloudflare Workers 的全透明计数中枢，首页动态徽章实时展示全球真实装机与调用量。绝对零隐私收集，仅作原子累加，底层网关源码全开源，接受全网极客审计。
-
- - ⚡ **丝滑战术交互 (Seamless UI)**：司令部交互面板像素级打磨。新节点发送暗号入伍成功后，司令部将无缝零延迟自动呼出最新的活跃节点阵列面板，彻底免除重复输入命令的繁琐，掌控感拉满。
-
-## 📂 项目架构 (Monorepo)
-
-本项目采用企业级的“主从控制”与“冷热数据分离”双重架构：
-
-```text
-📦 IP-Sentinel
- ┣ 📂 .github/workflows/      # 🏭 自动化兵工厂：每月定时触发指纹生成的 CI/CD 流水线
- ┣ 📂 master/                 # 🧠 司令部：SQLite 存储、TG 监听与 Webhook 调度中心
- ┣ 📂 core/                   # 🛡️ 边缘哨兵：Webhook 被动监听、哈希锚定执行引擎
- ┣ 📂 scripts/                # 🐍 兵工厂引擎：基于 Python 的多物理分区 UA 生成器
- ┣ 📂 data/                   # 🗂️ 全球数据规则库 (动态拓扑)
- ┃  ┣ 📜 map.json             # 🌐 全球区域索引大脑 (Master Index)
- ┃  ┣ 📂 regions/             # 🧊 冷数据：按 [国家/省州/城市] 深度细分的 LBS 锚点
- ┃  ┣ 📂 keywords/            # 🔥 热数据：按国家归类的动态搜索词库 (OTA 自动更新)
- ┃  ┗ 📜 user_agents.txt      # 🔥 热数据：由兵工厂每月锻造的绝对坐标专属设备库
- ┣ 📜 version.txt             # 🚩 全球版本信标：全网哨兵对齐的“北极星” (v3.4.0)
- ┗ 📂 telemetry/              # 👁️‍🗨️ 玻璃房计划：Cloudflare Workers 透明计数器网关源码
-```
-
-## 🚀 极速部署 (Quick Start)
-
-v3.4.x 提供了两种接入模式，请根据您的战术需求选择：
-
-### 🔹 模式 A：官方公共模式 (最简、推荐)
-**适合不想折腾、只想快速养护 IP 的新兵。**
-
-1. **关注机器人**：在 TG 中关注 [@OmniBeacon_bot](https://t.me/OmniBeacon_bot) 并发送 `/start`。
-2. **部署 Agent**：在目标 VPS 上执行以下指令，安装过程中**直接回车**使用官方机器人，并输入您的 Chat ID：
-```Bash
-bash <(curl -sL https://raw.githubusercontent.com/hotyue/IP-Sentinel/main/core/install.sh)
-
-```
-3. **激活节点**：安装完成后，您的手机会收到一条 #REGISTER# 暗号，将其转发给机器人即可完成入库。
-
-### 🔸 模式 B：私有独立模式 (全自主、硬核)
-**适合追求绝对数据隐私、需自建机器人的领主。**
-
-1. **部署 Master**：找一台 VPS 作为大脑（仅需部署一台），执行：
-```Bash
-bash <(curl -sL https://raw.githubusercontent.com/hotyue/IP-Sentinel/main/master/install_master.sh)
-
-```
-2. **部署 Agent**：在需要养护的机器上执行 Agent 脚本，输入您自建机器人的 Token 以及与 Master 一致的配置。
-```Bash
-bash <(curl -sL https://raw.githubusercontent.com/hotyue/IP-Sentinel/main/core/install.sh)
-
-```
-3. **激活节点**：同上，将暗号转发给您自己的机器人即可。
-
-### ⚠️ 架构级热升级指引 (Upgrade to v3.4.0)
-
-得益于 **v3.4.0 全新引入的版本锚点与状态机路由**，系统升级现已变得极其智能化。
-
-**如果您是从旧版 (v3.3.1 / v3.3.2) 升级：**
-1. 在终端再次运行对应的官方部署指令。
-2. 脚本会识别到您处于“前版本锚点时代”，会自动为您执行【架构重组】。
-3. **关键动作**：由于 v3.4.0 修正了 Telegram Markdown 解析 Bug，节点连接符已更换。升级后您的 TG 会收到一条新的 `#REGISTER#` 指令，请点击并发送一次以同步新身份。
-4. **清理**：在面板中手动剔除带有下划线 `_` 的旧失联节点即可。
-
-**如果您已处于 v3.4.0+：**
-未来的所有升级将进入**“极致静默模式”**，系统将根据版本锚点判断无需重组架构，一键回车，3 秒完成无损换脑。
-
-🗑️ 一键无痕卸载
-如果你需要清理某个边缘节点，只需重新运行 `core/install.sh` 并选择 **[2]**，或直接在节点终端执行：
-
-```Bash
-bash /opt/ip_sentinel/core/uninstall.sh
-
-```
-
-### 🧓 传家宝老旧系统专用通道 (Debian 9)
-
-如果你的小鸡系统版本过低（如 Debian 9），由于官方 APT 源已关闭且 Python 版本过旧，无法使用主线版本，请使用 **Legacy 兼容分支** 部署。
-*(注意：该分支仅作基础维护，不享受新功能迭代，请尽可能升级你的系统)*
+### 1. 安装
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/hotyue/IP-Sentinel/legacy/core/install.sh)
+bash <(curl -sL https://raw.githubusercontent.com/hotyue/IP-Sentinel/main/install_standalone.sh)
 ```
 
-📡 战术联络 (Community)
-如果你在使用过程中遇到任何疑难杂症，或者想围观大佬们的养护战报，欢迎加入我们的基地：
-- Telegram 频道: [@IP_Sentinel_Matrix](https://t.me/IP_Sentinel_Matrix)
+安装过程会交互式询问：
+- 选择国家/地区/城市
+- 选择模块（Google 纠偏 / Trust 净化 / 双开）
+- 选择 IP 协议（IPv4/IPv6）
 
-🤝 参与贡献
-如果你想为项目增加新的节点区域（例如德国、英国、新加坡等），或者提供更丰富的本土化搜索词库，非常欢迎提交 Pull Request！
+### 2. 依赖要求
 
-**v3.0 全球节点贡献规范：**
-1. 在 `data/regions/国家代码/省州代码/` 目录下新增对应城市的配置 `.json`。
-2. 在 `data/keywords/` 目录下新增或完善配套国家的词库 `kw_XX.txt`。
-3. **最重要的一步：** 在 `data/map.json` 中登记你的国家、省州与城市信息。安装脚本将自动读取地图，在全球雷达中点亮你的节点！
+**必须**：
+- [curl-impersonate](https://github.com/lwthiker/curl-impersonate)（提供 `curl_chrome*` 命令）
 
-⚠️ 免责声明
-本项目仅供网络原理研究、个人 VPS 维护学习使用。请遵守当地法律法规及目标服务商的 TOS（服务条款），切勿用于恶意高频请求或任何非法用途。使用者需自行承担因不当使用造成的 IP 封禁或其他相关风险。
+**系统自带或自动安装**：
+- `curl`, `jq`, `cron`, `procps`
 
-## Stargazers over time
-[![Stargazers over time](https://starchart.cc/hotyue/IP-Sentinel.svg?variant=adaptive)](https://starchart.cc/hotyue/IP-Sentinel)
+### 3. 查看状态
+
+```bash
+# 看运行日志
+tail -f /opt/ip_sentinel/logs/sentinel.log
+
+# 看守护进程
+tail -f /opt/ip_sentinel/logs/daemon.log
+```
+
+日志格式示例：
+```
+[2025-01-15 14:30:25] [v3.4.0] [INFO] [Google] [US] 启动 [curl_chrome125]
+[2025-01-15 14:30:45] [v3.4.0] [EXEC] [Google] [US] [1/8] HTTP:200 | 34.0522,-118.2439
+[2025-01-15 14:30:45] [v3.4.0] [SCORE] [Google] [US] ✅ 目标达成 (com)
+```
+
+### 4. 配置调整
+
+编辑 `/opt/ip_sentinel/config.conf`：
+
+```bash
+# 开关模块
+ENABLE_GOOGLE="true"       # Google 纠偏模块
+ENABLE_TRUST="true"         # Trust 净化模块
+
+# 网络设置
+IP_PREF="4"                  # 优先协议 4=IPv4, 6=IPv6
+BIND_IP="1.2.3.4"            # 绑定 IP（NAT 环境留空）
+
+# 区域信息（安装时已设置，通常无需修改）
+REGION_CODE="US"
+REGION_NAME="United States - Los Angeles"
+BASE_LAT="34.0522"
+BASE_LON="-118.2437"
+```
+
+修改后重启：
+```bash
+pkill -f standalone_daemon
+nohup bash /opt/ip_sentinel/core/standalone_daemon.sh >> /opt/ip_sentinel/logs/daemon.log 2>&1 &
+```
+
+### 5. 卸载
+
+```bash
+bash /opt/ip_sentinel/core/uninstall.sh
+```
+
+---
+
+## 开发者文档
+
+### 代码结构
+
+```
+IP-Sentinel/
+├── core/                      # 运行时代码
+│   ├── standalone_daemon.sh    # 主调度器：随机休眠、选模块、维持单例
+│   ├── mod_google_curl_imp.sh  # Google 模块：随机搜索/地图/新闻请求
+│   ├── mod_trust_curl_imp.sh   # Trust 模块：白名单站点随机访问
+│   ├── updater.sh              # 数据刷新：UA库、关键词、区域规则
+│   └── uninstall.sh            # 清理脚本
+├── data/                       # 静态数据
+│   ├── keywords/kw_{CC}.txt    # 各国搜索词库
+│   ├── regions/{CC}/...        # 区域配置（坐标、白名单）
+│   ├── map.json                # 国家-州-市索引
+│   └── user_agents.txt         # 浏览器指纹库（暂未消费）
+├── scripts/                    # 数据生成
+│   ├── fetch_trends.py         # 抓取 Google Trends RSS
+│   └── ua_generator.py         # 生成 4000 条 UA
+├── telemetry/worker.js         # Cloudflare Worker 统计（独立代码）
+├── .github/workflows/          # 自动化任务
+│   ├── daily_keywords.yml      # 每日更新关键词
+│   └── ua_factory.yml          # 每月生成 UA
+└── install_standalone.sh       # 安装入口
+```
+
+### 调度逻辑
+
+`standalone_daemon.sh` 主循环：
+
+1. **时区感知**：按区域代码硬编码偏移计算本地小时（US=-7, JP=+9, UK=+1, DE/FR=+2, 其他=+8）
+2. **活动时段**：仅 08:00-22:00（本地时间）运行
+3. **执行概率**：每天固定种子计算，约 60% 概率执行
+4. **计划次数**：每天 1-3 次随机
+5. **执行前延迟**：300-899 秒随机
+6. **间隔休眠**：两次执行之间 7200-14399 秒随机
+7. **模块选择**：Google 70% / Trust 30%（双开时）
+8. **更新先行**：每次执行前调用 `updater.sh`
+
+### Google 模块细节
+
+- 读取 `data/keywords/kw_{REGION_CODE}.txt`
+- 坐标抖动：基准坐标 ±0.001°（约 100m）
+- 单次会话：6-10 个请求
+- 请求类型随机：Search / News / Maps / connectivitycheck
+- 超时：15 秒
+- 间隔：90-150 秒
+- 自检：最后访问 google.com，根据跳转域名判定状态
+  - `com` 或匹配 `valid_url_suffix` → 成功
+  - `com.hk` 且区域不是 HK → 漂移
+  - 网络失败 → 阻断
+
+### Trust 模块细节
+
+- 读取当前区域 JSON 的 `trust_module.white_urls`
+- 降级：文件缺失时回退到 Wikipedia/Apple/Microsoft
+- 单次会话：3-6 个请求
+- 超时：15 秒
+- 间隔：45-120 秒
+- 成功判定：HTTP 2xx 或 3xx
+
+### 更新逻辑
+
+`updater.sh`：
+
+- UA 库：30 天周期
+- 关键词库：每次执行前拉取
+- 区域规则：每次执行前拉取
+- 日志裁剪：保留最后 2000 行
+
+### 遥测 Worker
+
+`telemetry/worker.js` 是独立的 Cloudflare Worker，提供：
+- `/ping/agent` 和 `/ping/master`：计数器自增
+- `/stats/agent` 和 `/stats/master`：Shields.io 徽章 JSON
+
+当前安装/运行脚本**未调用**这些端点，仅作为独立代码存在。
+
+### 扩展开发
+
+**添加新区域**：
+1. 在 `data/map.json` 添加国家/城市节点
+2. 在 `data/regions/` 创建 `{CC}/{State}/{City}.json`
+3. 创建 `data/keywords/kw_{CC}.txt`
+
+**区域 JSON 格式**：
+```json
+{
+  "region_name": "Country - City",
+  "google_module": {
+    "base_lat": 34.0522,
+    "base_lon": -118.2437,
+    "lang_params": "hl=en&gl=US",
+    "valid_url_suffix": "com"
+  },
+  "trust_module": {
+    "white_urls": ["https://...", "https://..."]
+  }
+}
+```
+
+---
+
+## 版本
+
+当前版本：`3.4.0`
+
+## 许可证
+
+AGPL-3.0
