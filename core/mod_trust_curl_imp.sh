@@ -20,11 +20,8 @@ CURL=$(detect_curl_imp) || { echo "curl-impersonate not found" >&2; exit 1; }
 
 log() { log_sentinel "$1" "Trust" "$REGION" "$2"; }
 
-# 加载白名单
-JSON=$(find "${DIR}/data/regions" -name "*.json" 2>/dev/null | head -n1)
-[ -f "$JSON" ] && mapfile -t URLS < <(jq -r '.trust_module.white_urls[]' "$JSON" 2>/dev/null)
-
-# 兜底
+# 白名单来自 config.conf 的 WHITE_URLS 数组
+URLS=("${WHITE_URLS[@]}")
 [ ${#URLS[@]} -eq 0 ] && URLS=("https://en.wikipedia.org/wiki/Special:Random" "https://www.apple.com/" "https://www.microsoft.com/")
 
 # 生成此会话的 UA

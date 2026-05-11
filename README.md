@@ -12,8 +12,7 @@ IP-Sentinel 是一套在单台 VPS 上自动运行的 IP 养护脚本，通过�
 bash <(curl -sL https://raw.githubusercontent.com/hotyue/IP-Sentinel/main/install_standalone.sh)
 ```
 
-安装过程会交互式询问：
-- 选择国家/地区/城市
+安装过程会自动检测 VPS 的地理位置（国家、城市、坐标），并交互式询问：
 - 选择模块（Google 纠偏 / Trust 净化 / 双开）
 - 选择 IP 协议（IPv4/IPv6）
 
@@ -55,11 +54,19 @@ ENABLE_TRUST="true"         # Trust 净化模块
 IP_PREF="4"                  # 优先协议 4=IPv4, 6=IPv6
 BIND_IP="1.2.3.4"            # 绑定 IP（NAT 环境留空）
 
-# 区域信息（安装时已设置，通常无需修改）
+# 区域信息（安装时已自动检测，通常无需修改）
 REGION_CODE="US"
-REGION_NAME="United States - Los Angeles"
+REGION_NAME="Los Angeles - US"
 BASE_LAT="34.0522"
 BASE_LON="-118.2437"
+TIMEZONE="America/Los_Angeles"
+
+# Trust 白名单（安装时已根据内置规则表写入）
+WHITE_URLS=(
+    "https://en.wikipedia.org/wiki/Special:Random"
+    "https://www.yahoo.com/"
+    ...
+)
 ```
 
 修改后重启：
@@ -89,9 +96,6 @@ IP-Sentinel/
 │   ├── utils.sh                # 共享工具：UA生成、日志、curl检测
 │   ├── updater.sh              # 日志裁剪、文件完整性检查
 │   └── uninstall.sh            # 清理脚本
-├── data/                       # 静态数据
-│   ├── regions/{CC}/...        # 区域配置（坐标、白名单）
-│   └── map.json                # 国家-州-市索引（含 UTC 偏移）
 ├── install_standalone.sh       # 安装入口
 └── version.txt                 # 版本号
 ```
@@ -100,7 +104,7 @@ IP-Sentinel/
 
 `standalone_daemon.sh` 主循环：
 
-1. **时区感知**：按 `map.json` 中的 `utc_offset` 计算本地小时
+1. **时区感知**：按 `config.conf` 中的 `TIMEZONE` 计算本地小时（精确，无需硬编码 UTC 偏移）
 2. **活动时段**：仅 08:00-22:00（本地时间）运行
 3. **执行概率**：每天固定种子计算，约 60% 概率执行
 4. **计划次数**：每天 1-3 次随机
@@ -124,8 +128,8 @@ IP-Sentinel/
 
 ### Trust 模块细节
 
-- 读取当前区域 JSON 的 `trust_module.white_urls`
-- 降级：文件缺失时回退到 Wikipedia/Apple/Microsoft
+- 白名单来自 `config.conf` 的 `WHITE_URLS` 数组（安装时根据国家代码匹配内置规则表）
+- 降级：数组为空时回退到 Wikipedia/Apple/Microsoft
 - 单次会话：3-6 个请求
 - 超时：15 秒
 - 间隔：45-120 秒
@@ -140,24 +144,12 @@ IP-Sentinel/
 ### 扩展开发
 
 **添加新区域**：
-1. 在 `data/map.json` 添加国家/城市节点（含 `utc_offset`）
-2. 在 `data/regions/` 创建 `{CC}/{City}.json`（单州国家）或 `{CC}/{State}/{City}.json`（多州国家）
+在 `install_standalone.sh` 的内置 `case` 规则表中新增国家代码分支，填入：
+- `VALID_URL_SUFFIX`（Google 域名后缀）
+- `LANG_PARAMS`（搜索语言参数）
+- `WHITE_URLS`（当地白名单站点，用 `|` 分隔）
 
-**区域 JSON 格式**：
-```json
-{
-  "region_name": "Country - City",
-  "google_module": {
-    "base_lat": 34.0522,
-    "base_lon": -118.2437,
-    "lang_params": "hl=en&gl=US",
-    "valid_url_suffix": "com"
-  },
-  "trust_module": {
-    "white_urls": ["https://...", "https://..."]
-  }
-}
-```
+安装脚本会通过 `api.ip.sb/geoip` 自动检测新国家的 VPS 坐标，无需维护静态 JSON。
 
 ---
 

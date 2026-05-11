@@ -11,7 +11,7 @@ echo "IP-Sentinel 单机自治版 v${VER}"
 echo "================================"
 
 # 检查 curl-impersonate
-echo -e "\n[0/5] 检查 curl-impersonate..."
+echo -e "\n[0/4] 检查 curl-impersonate..."
 CURL_IMP=""
 for cmd in curl_chrome125 curl_chrome131 curl_chrome120 curl_chrome116 curl_chrome; do
     command -v "$cmd" >/dev/null 2>&1 && { CURL_IMP="$cmd"; break; }
@@ -25,7 +25,7 @@ fi
 echo "✅ 使用: $CURL_IMP"
 
 # 安装依赖
-echo -e "\n[1/5] 安装依赖..."
+echo -e "\n[1/4] 安装依赖..."
 if command -v apt-get >/dev/null 2>&1; then
     apt-get update -y >/dev/null 2>&1
     apt-get install -y curl jq cron procps >/dev/null 2>&1
@@ -34,40 +34,76 @@ elif command -v yum >/dev/null 2>&1; then
     systemctl enable crond --now 2>/dev/null || true
 fi
 
-# 通用选择函数
-select_item() {
-    local file=$1 desc=$2
-    local count=$(wc -l <"$file")
-    if [ "$count" -eq 1 ]; then
-        cut -d'|' -f1 "$file"
-        return
-    fi
-    echo "$desc:"
-    nl "$file"
-    read -p "选择 (默认1): " sel
-    sel=${sel:-1}
-    sed -n "${sel}p" "$file" | cut -d'|' -f1
-}
+# 网络配置 + 自动地理检测
+echo -e "\n[2/4] 网络与地理检测..."
+IPV4=$(curl -4 -s -m 3 api.ip.sb/ip 2>/dev/null || echo "")
+IPV6=$(curl -6 -s -m 3 api.ip.sb/ip 2>/dev/null || echo "")
 
-# 区域选择
-echo -e "\n[2/5] 选择区域..."
-curl -sL "${REPO}/data/map.json" -o /tmp/map.json
+# 自动检测地理位置（优先 IPv4）
+if [ -n "$IPV4" ]; then
+    GEO=$(curl -4 -s -m 5 "https://api.ip.sb/geoip" 2>/dev/null || echo "")
+else
+    GEO=$(curl -6 -s -m 5 "https://api.ip.sb/geoip" 2>/dev/null || echo "")
+fi
 
-jq -r '.countries[] | "\(.id)|\(.name)"' /tmp/map.json > /tmp/countries.txt
-REGION_CODE=$(select_item /tmp/countries.txt "国家/地区")
+REGION_CODE=$(echo "$GEO" | jq -r '.country_code // empty')
+CITY=$(echo "$GEO" | jq -r '.city // empty')
+BASE_LAT=$(echo "$GEO" | jq -r '.latitude // empty')
+BASE_LON=$(echo "$GEO" | jq -r '.longitude // empty')
+TIMEZONE=$(echo "$GEO" | jq -r '.timezone // empty')
 
-jq -r ".countries[] | select(.id==\"$REGION_CODE\") | .states[] | \"\(.id)|\(.name)\"" /tmp/map.json > /tmp/states.txt
-STATE=$(select_item /tmp/states.txt "州/省")
+[ -z "$REGION_CODE" ] && { echo "❌ 地理检测失败，无法确定国家"; exit 1; }
+echo "📍 检测: $CITY, $REGION_CODE | $BASE_LAT, $BASE_LON"
 
-jq -r ".countries[] | select(.id==\"$REGION_CODE\") | .states[] | select(.id==\"$STATE\") | .cities[] | \"\(.id)|\(.name)\"" /tmp/map.json > /tmp/cities.txt
-CITY=$(select_item /tmp/cities.txt "城市")
+# 根据国家代码匹配内置规则
+case "$REGION_CODE" in
+    US)
+        VALID_URL_SUFFIX="com"
+        LANG_PARAMS="hl=en&gl=US"
+        WHITE_URLS="https://en.wikipedia.org/wiki/Special:Random|https://www.yahoo.com/|https://www.target.com/|https://www.npr.org/|https://www.weather.com/|https://www.amazon.com/|https://www.cdc.gov/"
+        ;;
+    JP)
+        VALID_URL_SUFFIX="com"
+        LANG_PARAMS="hl=ja&gl=JP"
+        WHITE_URLS="https://ja.wikipedia.org/wiki/Special:Random|https://www.yahoo.co.jp/|https://www.rakuten.co.jp/|https://www.nhk.or.jp/|https://kakaku.com/|https://www.goo.ne.jp/|https://www.amazon.co.jp/"
+        ;;
+    UK)
+        VALID_URL_SUFFIX="co.uk"
+        LANG_PARAMS="hl=en&gl=GB"
+        WHITE_URLS="https://www.bbc.co.uk/|https://www.gov.uk/|https://www.amazon.co.uk/|https://www.theguardian.com/uk|https://www.nhs.uk/|https://en.wikipedia.org/wiki/Special:Random|https://www.ebay.co.uk/"
+        ;;
+    DE)
+        VALID_URL_SUFFIX="de"
+        LANG_PARAMS="hl=de&gl=DE"
+        WHITE_URLS="https://www.amazon.de/|https://www.spiegel.de/|https://www.tagesschau.de/|https://de.wikipedia.org/wiki/Spezial:Zuf%C3%A4llige_Seite|https://www.ebay.de/|https://www.bild.de/|https://www.kicker.de/"
+        ;;
+    FR)
+        VALID_URL_SUFFIX="fr"
+        LANG_PARAMS="hl=fr&gl=FR"
+        WHITE_URLS="https://www.lemonde.fr/|https://www.lefigaro.fr/|https://www.amazon.fr/|https://www.service-public.fr/|https://fr.wikipedia.org/wiki/Sp%C3%A9cial:Page_au_hasard|https://www.cdiscount.com/|https://www.fnac.com/"
+        ;;
+    SG)
+        VALID_URL_SUFFIX="com.sg"
+        LANG_PARAMS="hl=en-SG&gl=SG"
+        WHITE_URLS="https://www.straitstimes.com/|https://www.channelnewsasia.com/|https://www.gov.sg/|https://shopee.sg/|https://en.wikipedia.org/wiki/Special:Random|https://www.fairprice.com.sg/|https://www.dbs.com.sg/"
+        ;;
+    HK)
+        VALID_URL_SUFFIX="com.hk"
+        LANG_PARAMS="hl=zh-HK&gl=HK"
+        WHITE_URLS="https://www.gov.hk/|https://www.hko.gov.hk/|https://www.scmp.com/|https://www.hk01.com/|https://zh.wikipedia.org/wiki/Special:Random|https://www.hktvmall.com/|https://www.mtr.com.hk/"
+        ;;
+    *)
+        echo "⚠️ 国家 $REGION_CODE 暂无内置规则，使用通用 US 规则"
+        VALID_URL_SUFFIX="com"
+        LANG_PARAMS="hl=en&gl=US"
+        WHITE_URLS="https://en.wikipedia.org/wiki/Special:Random|https://www.apple.com/|https://www.microsoft.com/"
+        ;;
+esac
 
-UTC_OFFSET=$(jq -r ".countries[] | select(.id==\"$REGION_CODE\") | .utc_offset" /tmp/map.json)
-
-rm -f /tmp/*.json /tmp/*.txt
+REGION_NAME="${CITY:-$REGION_CODE} - ${REGION_CODE}"
 
 # 功能配置
-echo -e "\n[3/5] 功能配置..."
+echo -e "\n[3/4] 功能配置..."
 echo "1) Google 区域纠偏"
 echo "2) IP 信用净化"
 echo "3) 双管齐下 (默认)"
@@ -79,11 +115,8 @@ ENABLE_TRUST="false"
 [ "$mod" == "2" ] && { ENABLE_GOOGLE="false"; ENABLE_TRUST="true"; }
 [ "$mod" == "3" ] && ENABLE_TRUST="true"
 
-# 网络配置
-echo -e "\n[4/5] 网络配置..."
-IPV4=$(curl -4 -s -m 3 api.ip.sb/ip 2>/dev/null || echo "")
-IPV6=$(curl -6 -s -m 3 api.ip.sb/ip 2>/dev/null || echo "")
-
+# IP 选择
+echo -e "\n[4/4] IP 协议..."
 [ -n "$IPV4" ] && echo "1) IPv4: $IPV4"
 [ -n "$IPV6" ] && echo "2) IPv6: $IPV6"
 read -p "选择: " ip
@@ -109,26 +142,9 @@ else
     BIND_IP=""
 fi
 
-# 构建区域数据路径 (Default 州扁平化)
-if [ "$STATE" == "Default" ]; then
-    REGION_PATH="data/regions/${REGION_CODE}/${CITY}.json"
-    mkdir -p "${DIR}/data/regions/${REGION_CODE}"
-else
-    REGION_PATH="data/regions/${REGION_CODE}/${STATE}/${CITY}.json"
-    mkdir -p "${DIR}/data/regions/${REGION_CODE}/${STATE}"
-fi
-
-curl -sL "${REPO}/${REGION_PATH}" -o "${DIR}/${REGION_PATH}"
-JSON="${DIR}/${REGION_PATH}"
-[ ! -s "$JSON" ] && { echo "❌ 区域数据拉取失败"; exit 1; }
-
-REGION_NAME=$(jq -r '.region_name' "$JSON")
-BASE_LAT=$(jq -r '.google_module.base_lat' "$JSON")
-BASE_LON=$(jq -r '.google_module.base_lon' "$JSON")
-LANG_PARAMS=$(jq -r '.google_module.lang_params' "$JSON")
-VALID_URL_SUFFIX=$(jq -r '.google_module.valid_url_suffix' "$JSON")
-
 # 写入配置
+mkdir -p "${DIR}/core" "${DIR}/logs"
+
 cat > "${DIR}/config.conf" << EOF
 AGENT_VERSION="$VER"
 REGION_CODE="$REGION_CODE"
@@ -144,7 +160,10 @@ LOG_FILE="${DIR}/logs/sentinel.log"
 IP_PREF="$IP_PREF"
 PUBLIC_IP="$PUBLIC_IP"
 BIND_IP="$BIND_IP"
-UTC_OFFSET="$UTC_OFFSET"
+TIMEZONE="$TIMEZONE"
+WHITE_URLS=(
+$(echo "$WHITE_URLS" | tr '|' '\n' | sed 's/^/    "/;s/$/"/')
+)
 EOF
 
 chmod 600 "${DIR}/config.conf"

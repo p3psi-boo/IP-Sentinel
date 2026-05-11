@@ -20,12 +20,9 @@ CURL=$(detect_curl_imp) || { echo "curl-impersonate required"; exit 1; }
 
 log() { log_sentinel "$1" "Daemon" "$REGION_CODE" "$2"; }
 
-# 时区转小时
+# 时区转小时（精确，无需硬编码偏移）
 get_local_hour() {
-    local off=${UTC_OFFSET:-+8}
-    local h=$(( $(date -u +%H) + off ))
-    [ $h -lt 0 ] && h=$((24 + h)) || [ $h -ge 24 ] && h=$((h - 24))
-    echo $h
+    TZ="${TIMEZONE:-UTC}" date +%H
 }
 
 # 检查是否在活动时段 (8-22点)
@@ -58,7 +55,7 @@ update() {
 
 # 到明早8点的秒数
 to_morning() {
-    local h=$(get_local_hour)
+    local h=$(TZ="${TIMEZONE:-UTC}" date +%H)
     echo $(( (24 - h + 8) * 3600 + RANDOM % 1800 ))
 }
 
