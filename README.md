@@ -20,21 +20,30 @@ bash <(curl -sL https://raw.githubusercontent.com/hotyue/IP-Sentinel/main/instal
 
 **必须**：
 - [curl-impersonate](https://github.com/lwthiker/curl-impersonate)（提供 `curl_chrome*` 命令）
+- **systemd**（本版本使用 systemd timer 调度）
 
 **系统自带或自动安装**：
-- `curl`, `jq`, `cron`, `procps`
+- `curl`, `jq`, `procps`
 
 ### 3. 查看状态
 
 ```bash
-tail -f /opt/ip_sentinel/logs/daemon.log
+# 查看实时日志
+journalctl -u ip-sentinel -f
+
+# 查看定时器状态
+systemctl status ip-sentinel.timer
+
+# 查看历史执行记录
+journalctl -u ip-sentinel --since today
 ```
 
 日志格式示例：
 ```
-[2025-01-15 14:30:25] [v3.4.0] [INFO] [Daemon] [US] 启动 [curl_chrome125]
-[2025-01-15 14:30:45] [v3.4.0] [EXEC] [Google] [US] [1/8] HTTP:200 | 34.0522,-118.2439
-[2025-01-15 14:30:45] [v3.4.0] [SCORE] [Google] [US] ✅ 目标达成 (com)
+[2025-01-15 14:30:25] [v3.4.0] [INFO] [Worker] [US] 命中计划 14:00，延迟 312s
+[2025-01-15 14:35:37] [v3.4.0] [INFO] [Worker] [US] 执行: mod_google_curl_imp.sh
+[2025-01-15 14:35:45] [v3.4.0] [EXEC] [Google] [US] [1/8] HTTP:200 | 34.0522,-118.2439
+[2025-01-15 14:35:45] [v3.4.0] [SCORE] [Google] [US] ✅ 目标达成 (com)
 ```
 
 ### 4. 配置调整
@@ -48,10 +57,9 @@ IP_PREF="4"                  # 优先协议 4=IPv4, 6=IPv6
 BIND_IP="1.2.3.4"            # 绑定 IP（NAT 环境留空）
 ```
 
-修改后重启：
+修改后重载：
 ```bash
-pkill -f standalone_daemon
-nohup bash /opt/ip_sentinel/core/standalone_daemon.sh >> /opt/ip_sentinel/logs/daemon.log 2>&1 &
+systemctl daemon-reload
 ```
 
 ### 5. 卸载
@@ -64,20 +72,18 @@ bash /opt/ip_sentinel/core/uninstall.sh
 
 ## 开发者文档
 
-### 设计哲学：Stateless
+### 设计哲学
 
-IP-Sentinel 在运行时不向磁盘写入任何状态文件：
-- 无 `.daemon_state` 计数器：调度基于**日期种子**生成固定执行窗口
-- 无内部日志文件写入：全部输出到 **stdout**，由外部重定向管理（systemd/docker/cron）
-- 无 `updater.sh`：没有需要维护的本地数据缓存
-- 安装后磁盘上只保留静态配置 (`config.conf`) 和代码 (`core/*.sh`)
+**Stateless**：运行时不向磁盘写入任何状态文件。没有 `.daemon_state`，没有内部日志文件写入。
+
+**systemd timer**：不常驻后台进程，由 systemd 每小时在 08:00-22:00 之间唤醒一次 oneshot worker，执行完即退出。
 
 ### 代码结构
 
 ```
 IP-Sentinel/
 ├── core/
-│   ├── standalone_daemon.sh    # 主调度器
+│   ├── standalone_worker.sh    # systemd oneshot：调度判断 + 执行模块
 │   ├── mod_google_curl_imp.sh  # Google 模块
 │   ├── mod_trust_curl_imp.sh   # Trust 模块
 │   ├── utils.sh                # 共享工具
@@ -88,14 +94,19 @@ IP-Sentinel/
 
 ### 调度逻辑
 
-守护进程每小时检查一次（`sleep 3600`）：
+由 `ip-sentinel.timer` 控制：
+
+```ini
+OnCalendar=*-*-* 08..22:00:00
+```
+
+每小时整点触发 `ip-sentinel.service`（Type=oneshot），`standalone_worker.sh` 执行：
 
 1. **日期种子**：`$(date +%Y%m%d)$REGION_CODE` 生成今日计划
 2. **休息概率**：40% 概率今日完全休息
 3. **执行窗口**：休息日外，生成 1-3 个随机执行小时（08-22）
-4. **命中执行**：当前小时匹配窗口时，随机延迟 300-900 秒后执行
-5. **自然冷却**：执行后睡 3600 秒到下一检查点，避免密集触发
-6. **重启安全**：同一天内重启计划不变（种子基于日期），不会重复执行同一窗口
+4. **命中判断**：当前小时匹配窗口时，随机延迟 300-900 秒后执行；不匹配则立即 exit 0
+5. **重启安全**：同一天内重启计划不变（种子基于日期），不会重复执行同一窗口
 
 ### 扩展开发
 

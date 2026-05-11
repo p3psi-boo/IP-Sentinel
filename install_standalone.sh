@@ -1,11 +1,11 @@
 #!/bin/bash
-# IP-Sentinel 单机自治版安装脚本 (stateless)
+# IP-Sentinel 单机自治版安装脚本 (systemd timer)
 #
 # 安装后系统上只保留：
 # - /opt/ip_sentinel/config.conf   静态配置
 # - /opt/ip_sentinel/core/*.sh     运行时代码
-# - /opt/ip_sentinel/logs/          外部重定向目录（无程序内部写入）
-# 无 .daemon_state，无 updater.sh，无数据文件
+# - /etc/systemd/system/ip-sentinel.*  systemd unit 文件
+# 无守护进程常驻，无状态文件，无内部日志写入
 
 set -e
 
@@ -37,7 +37,12 @@ if command -v apt-get >/dev/null 2>&1; then
     apt-get install -y curl jq cron procps >/dev/null 2>&1
 elif command -v yum >/dev/null 2>&1; then
     yum install -y curl jq cronie procps-ng >/dev/null 2>&1
-    systemctl enable crond --now 2>/dev/null || true
+fi
+
+# 检查 systemd
+if ! command -v systemctl >/dev/null 2>&1; then
+    echo "❌ systemd 未找到，本版本依赖 systemd timer"
+    exit 1
 fi
 
 # 网络与自动地理检测
@@ -148,7 +153,7 @@ else
 fi
 
 # 写入配置
-mkdir -p "${DIR}/core" "${DIR}/logs"
+mkdir -p "${DIR}/core"
 
 cat > "${DIR}/config.conf" << EOF
 AGENT_VERSION="$VER"
@@ -175,7 +180,7 @@ chmod 600 "${DIR}/config.conf"
 
 # 部署组件
 echo -e "\n[4/4] 部署组件..."
-for f in core/standalone_daemon.sh core/uninstall.sh core/utils.sh; do
+for f in core/standalone_worker.sh core/uninstall.sh core/utils.sh; do
     curl -sL "${REPO}/${f}" -o "${DIR}/${f}"
 done
 
@@ -184,17 +189,43 @@ done
 
 chmod +x ${DIR}/core/*.sh
 
-# 开机自启
-crontab -l 2>/dev/null | grep -v ip_sentinel > /tmp/cron_clean || true
-echo "@reboot nohup bash ${DIR}/core/standalone_daemon.sh >> ${DIR}/logs/daemon.log 2>&1 &" >> /tmp/cron_clean
-crontab /tmp/cron_clean && rm -f /tmp/cron_clean
+# 写入 systemd unit
+cat > /etc/systemd/system/ip-sentinel.service << 'EOF'
+[Unit]
+Description=IP-Sentinel IP maintenance worker
+After=network.target
 
-# 初始化并启动
-nohup bash "${DIR}/core/standalone_daemon.sh" >> "${DIR}/logs/daemon.log" 2>&1 &
+[Service]
+Type=oneshot
+ExecStart=/opt/ip_sentinel/core/standalone_worker.sh
+StandardOutput=journal
+StandardError=journal
+EOF
+
+cat > /etc/systemd/system/ip-sentinel.timer << 'EOF'
+[Unit]
+Description=IP-Sentinel hourly check (08:00-22:00)
+
+[Timer]
+OnCalendar=*-*-* 08..22:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now ip-sentinel.timer
+
+# 清理旧版本残留的 crontab
+crontab -l 2>/dev/null | grep -v ip_sentinel > /tmp/cron_clean || true
+crontab /tmp/cron_clean 2>/dev/null || true
+rm -f /tmp/cron_clean
 
 echo -e "\n================================"
 echo "🎉 部署完成!"
 echo "📍 区域: $REGION_NAME"
 echo "🔐 引擎: $CURL_IMP"
-echo "📜 日志: tail -f ${DIR}/logs/daemon.log"
+echo "📜 日志: journalctl -u ip-sentinel -f"
+echo "⏰ 查看定时器: systemctl status ip-sentinel.timer"
 echo "================================"
