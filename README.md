@@ -42,6 +42,53 @@ bash /opt/ip_sentinel/core/uninstall.sh
 
 systemd timer 每小时 08:00-22:00 唤醒一次 oneshot worker。基于日期种子生成 1-3 个执行窗口，命中则随机延迟 5-15 分钟后执行，当天重启计划不变。
 
+### 推荐的 systemd 配置
+
+`/etc/systemd/system/ip-sentinel.service`
+
+```ini
+[Unit]
+Description=IP-Sentinel IP maintenance worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/ip_sentinel/core/standalone_worker.sh
+Nice=19
+StandardOutput=journal
+StandardError=journal
+```
+
+`/etc/systemd/system/ip-sentinel.timer`
+
+```ini
+[Unit]
+Description=IP-Sentinel hourly check (08:00-22:00)
+
+[Timer]
+OnCalendar=*-*-* 08..22:00:00
+AccuracySec=5min
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+说明：
+- `Nice=19`：养护任务以低优先级运行，不抢占业务资源
+- `AccuracySec=5min`：放宽触发精度，避免 systemd 过度聚合调度
+- `RandomizedDelaySec=300`：各 VPS 实际触发时间分散在 ±5 分钟内，避免全局并发尖峰
+- `Persistent=true`：系统关机期间错过的触发，下次开机后会补执行
+
+应用配置：
+
+```bash
+systemctl daemon-reload
+systemctl enable --now ip-sentinel.timer
+```
+
 ## 添加新区域
 
 在 `install_standalone.sh` 的 `case` 表中新增国家分支，填入 `VALID_URL_SUFFIX`、`LANG_PARAMS`、`WHITE_URLS`。

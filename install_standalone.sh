@@ -193,11 +193,13 @@ chmod +x ${DIR}/core/*.sh
 cat > /etc/systemd/system/ip-sentinel.service << 'EOF'
 [Unit]
 Description=IP-Sentinel IP maintenance worker
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
 ExecStart=/opt/ip_sentinel/core/standalone_worker.sh
+Nice=19
 StandardOutput=journal
 StandardError=journal
 EOF
@@ -208,6 +210,8 @@ Description=IP-Sentinel hourly check (08:00-22:00)
 
 [Timer]
 OnCalendar=*-*-* 08..22:00:00
+AccuracySec=5min
+RandomizedDelaySec=300
 Persistent=true
 
 [Install]
