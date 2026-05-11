@@ -1,11 +1,16 @@
 #!/bin/bash
-# IP-Sentinel 单机自治 Daemon
+# IP-Sentinel 单机自治 Daemon (stateless)
+#
+# 无状态设计：
+# - 不写入任何状态文件（无 .daemon_state）
+# - 日志输出到 stdout，由外部重定向管理
+# - 调度基于日期种子生成固定执行窗口，每小时检查一次
+# - 重启后计划不变（同一天内日期种子不变）
 
 set -e
 
 DIR="/opt/ip_sentinel"
 CFG="${DIR}/config.conf"
-STATE="${DIR}/core/.daemon_state"
 
 [ -f "$CFG" ] || { echo "Config missing"; exit 1; }
 source "$CFG"
@@ -20,50 +25,28 @@ CURL=$(detect_curl_imp) || { echo "curl-impersonate required"; exit 1; }
 
 log() { log_sentinel "$1" "Daemon" "$REGION_CODE" "$2"; }
 
-# 时区转小时（精确，无需硬编码偏移）
+# 获取本地小时
 get_local_hour() {
     TZ="${TIMEZONE:-UTC}" date +%H
 }
 
-# 检查是否在活动时段 (8-22点)
-in_active() {
-    local h=$(get_local_hour)
-    [ $h -ge 8 ] && [ $h -lt 22 ]
-}
-
-# 今日是否执行 (60%概率)
-should_run() {
+# 生成今日执行计划（1-3个执行小时，基于日期种子）
+get_schedule() {
     local seed=$(($(echo "$(date +%Y%m%d)$REGION_CODE" | cksum | awk '{print $1}') % 100))
-    [ $seed -lt 60 ]
-}
-
-# 计划执行次数 (1-3次)
-planned() {
-    echo $(( ($(date +%Y%m%d | cksum | awk '{print $1}') % 3) + 1 ))
-}
-
-# 已完成次数
-completed() {
-    local today=$(date +%Y%m%d)
-    [ -f "$STATE" ] && [ "$(head -n1 "$STATE")" == "$today" ] && tail -n1 "$STATE" || echo "0"
-}
-
-# 更新计数
-update() {
-    printf "%s\n%s\n" "$(date +%Y%m%d)" "$1" > "$STATE"
-}
-
-# 到明早8点的秒数
-to_morning() {
-    local h=$(TZ="${TIMEZONE:-UTC}" date +%H)
-    echo $(( (24 - h + 8) * 3600 + RANDOM % 1800 ))
+    if [ $seed -ge 60 ]; then
+        return  # 今日休息
+    fi
+    local count=$(( ($(echo "$(date +%Y%m%d)" | cksum | awk '{print $1}') % 3) + 1 ))
+    local i
+    for i in $(seq 1 $count); do
+        local h=$(( 8 + $(echo "$(date +%Y%m%d)$i" | cksum | awk '{print $1}') % 14 ))
+        echo $h
+    done | sort -u
 }
 
 # 执行养护
 maintain() {
     log "INFO" "开始养护 [$CURL]"
-
-    [ -x "${DIR}/core/updater.sh" ] && bash "${DIR}/core/updater.sh" >/dev/null 2>&1
 
     local mod=""
     if [ "$ENABLE_GOOGLE" == "true" ] && [ "$ENABLE_TRUST" == "true" ]; then
@@ -85,42 +68,19 @@ trap cleanup SIGTERM SIGINT
 log "START" "Daemon启动 [$CURL] | 区域: $REGION_CODE"
 
 while true; do
-    today=$(date +%Y%m%d)
-    done=$(completed)
+    h=$(get_local_hour)
+    schedule=$(get_schedule)
 
-    # 新的一天重置
-    [ ! -f "$STATE" ] || [ "$(head -n1 "$STATE" 2>/dev/null)" != "$today" ] && { done=0; log "INFO" "新的一天"; }
-
-    if in_active; then
-        if should_run; then
-            plan=$(planned)
-            log "INFO" "计划 $plan 次，已完成 $done 次"
-
-            if [ $done -lt $plan ]; then
-                jitter=$((RANDOM % 600 + 300))
-                log "INFO" "延迟 ${jitter}s"
-                sleep $jitter
-
-                maintain
-                done=$((done + 1))
-                update $done
-
-                if [ $done -lt $plan ]; then
-                    log "INFO" "下次: $(( (7200 + RANDOM % 7200) / 3600 ))小时后"
-                    sleep $((7200 + RANDOM % 7200))
-                else
-                    log "INFO" "今日完成"
-                    sleep $(to_morning)
-                fi
-            else
-                sleep $(to_morning)
-            fi
-        else
-            log "INFO" "今日休息"
-            sleep $(to_morning)
+    if [ $h -ge 8 ] && [ $h -lt 22 ]; then
+        if [ -n "$schedule" ] && echo "$schedule" | grep -qx "$h"; then
+            jitter=$((RANDOM % 600 + 300))
+            log "INFO" "命中计划 ${h}:00，延迟 ${jitter}s"
+            sleep $jitter
+            maintain
         fi
+        sleep 3600
     else
-        log "INFO" "非活动时段 ($(get_local_hour):00)"
-        sleep $(to_morning)
+        log "INFO" "非活动时段 (${h}:00)"
+        sleep $(( (24 - h + 8) * 3600 + RANDOM % 1800 ))
     fi
 done

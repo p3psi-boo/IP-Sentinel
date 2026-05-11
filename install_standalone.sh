@@ -1,5 +1,11 @@
 #!/bin/bash
-# IP-Sentinel 单机自治版安装脚本
+# IP-Sentinel 单机自治版安装脚本 (stateless)
+#
+# 安装后系统上只保留：
+# - /opt/ip_sentinel/config.conf   静态配置
+# - /opt/ip_sentinel/core/*.sh     运行时代码
+# - /opt/ip_sentinel/logs/          外部重定向目录（无程序内部写入）
+# 无 .daemon_state，无 updater.sh，无数据文件
 
 set -e
 
@@ -11,7 +17,7 @@ echo "IP-Sentinel 单机自治版 v${VER}"
 echo "================================"
 
 # 检查 curl-impersonate
-echo -e "\n[0/4] 检查 curl-impersonate..."
+echo -e "\n[0/3] 检查 curl-impersonate..."
 CURL_IMP=""
 for cmd in curl_chrome125 curl_chrome131 curl_chrome120 curl_chrome116 curl_chrome; do
     command -v "$cmd" >/dev/null 2>&1 && { CURL_IMP="$cmd"; break; }
@@ -25,7 +31,7 @@ fi
 echo "✅ 使用: $CURL_IMP"
 
 # 安装依赖
-echo -e "\n[1/4] 安装依赖..."
+echo -e "\n[1/3] 安装依赖..."
 if command -v apt-get >/dev/null 2>&1; then
     apt-get update -y >/dev/null 2>&1
     apt-get install -y curl jq cron procps >/dev/null 2>&1
@@ -34,12 +40,11 @@ elif command -v yum >/dev/null 2>&1; then
     systemctl enable crond --now 2>/dev/null || true
 fi
 
-# 网络配置 + 自动地理检测
-echo -e "\n[2/4] 网络与地理检测..."
+# 网络与自动地理检测
+echo -e "\n[2/3] 网络与地理检测..."
 IPV4=$(curl -4 -s -m 3 api.ip.sb/ip 2>/dev/null || echo "")
 IPV6=$(curl -6 -s -m 3 api.ip.sb/ip 2>/dev/null || echo "")
 
-# 自动检测地理位置（优先 IPv4）
 if [ -n "$IPV4" ]; then
     GEO=$(curl -4 -s -m 5 "https://api.ip.sb/geoip" 2>/dev/null || echo "")
 else
@@ -52,7 +57,7 @@ BASE_LAT=$(echo "$GEO" | jq -r '.latitude // empty')
 BASE_LON=$(echo "$GEO" | jq -r '.longitude // empty')
 TIMEZONE=$(echo "$GEO" | jq -r '.timezone // empty')
 
-[ -z "$REGION_CODE" ] && { echo "❌ 地理检测失败，无法确定国家"; exit 1; }
+[ -z "$REGION_CODE" ] && { echo "❌ 地理检测失败"; exit 1; }
 echo "📍 检测: $CITY, $REGION_CODE | $BASE_LAT, $BASE_LON"
 
 # 根据国家代码匹配内置规则
@@ -103,7 +108,7 @@ esac
 REGION_NAME="${CITY:-$REGION_CODE} - ${REGION_CODE}"
 
 # 功能配置
-echo -e "\n[3/4] 功能配置..."
+echo -e "\n[3/3] 功能配置..."
 echo "1) Google 区域纠偏"
 echo "2) IP 信用净化"
 echo "3) 双管齐下 (默认)"
@@ -115,8 +120,8 @@ ENABLE_TRUST="false"
 [ "$mod" == "2" ] && { ENABLE_GOOGLE="false"; ENABLE_TRUST="true"; }
 [ "$mod" == "3" ] && ENABLE_TRUST="true"
 
-# IP 选择
-echo -e "\n[4/4] IP 协议..."
+# IP 协议选择
+echo -e "\nIP 协议:"
 [ -n "$IPV4" ] && echo "1) IPv4: $IPV4"
 [ -n "$IPV6" ] && echo "2) IPv6: $IPV6"
 read -p "选择: " ip
@@ -169,8 +174,8 @@ EOF
 chmod 600 "${DIR}/config.conf"
 
 # 部署组件
-echo -e "\n[5/5] 部署组件..."
-for f in core/standalone_daemon.sh core/updater.sh core/uninstall.sh core/utils.sh; do
+echo -e "\n[4/4] 部署组件..."
+for f in core/standalone_daemon.sh core/uninstall.sh core/utils.sh; do
     curl -sL "${REPO}/${f}" -o "${DIR}/${f}"
 done
 
@@ -191,5 +196,5 @@ echo -e "\n================================"
 echo "🎉 部署完成!"
 echo "📍 区域: $REGION_NAME"
 echo "🔐 引擎: $CURL_IMP"
-echo "📜 日志: tail -f ${DIR}/logs/sentinel.log"
+echo "📜 日志: tail -f ${DIR}/logs/daemon.log"
 echo "================================"

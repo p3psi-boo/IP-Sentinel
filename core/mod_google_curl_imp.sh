@@ -1,5 +1,5 @@
 #!/bin/bash
-# IP-Sentinel Google 模块 - curl-impersonate 版
+# IP-Sentinel Google 模块 - curl-impersonate 版 (stateless)
 
 set -e
 

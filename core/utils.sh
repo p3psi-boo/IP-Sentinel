@@ -2,16 +2,12 @@
 # IP-Sentinel 工具函数库
 
 # ==========================================
-# 通用日志
+# 通用日志（输出到 stdout，由外部重定向管理）
 # ==========================================
 
 log_sentinel() {
-    local level="$1"
-    local module="$2"
-    local region="$3"
-    local msg="$4"
     printf "[%s] [v%s] [%s] [%s] [%s] %s\n" \
-        "$(date '+%Y-%m-%d %H:%M:%S')" "${AGENT_VERSION:-3.4.0}" "$level" "$module" "$region" "$msg" >> "${DIR}/logs/sentinel.log"
+        "$(date '+%Y-%m-%d %H:%M:%S')" "${AGENT_VERSION:-3.4.0}" "$1" "$2" "$3" "$4"
 }
 
 # ==========================================
