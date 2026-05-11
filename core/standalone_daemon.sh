@@ -10,23 +10,22 @@ STATE="${DIR}/core/.daemon_state"
 [ -f "$CFG" ] || { echo "Config missing"; exit 1; }
 source "$CFG"
 
+# 加载工具函数
+UTILS="${DIR}/core/utils.sh"
+[ -f "$UTILS" ] || { echo "utils.sh missing"; exit 1; }
+source "$UTILS"
+
 # 检测 curl-impersonate
-for cmd in curl_chrome125 curl_chrome131 curl_chrome120 curl_chrome116 curl_chrome; do
-    command -v "$cmd" >/dev/null 2>&1 && { CURL="$cmd"; break; }
-done
-[ -z "$CURL" ] && { echo "curl-impersonate required"; exit 1; }
+CURL=$(detect_curl_imp) || { echo "curl-impersonate required"; exit 1; }
+
+log() { log_sentinel "$1" "Daemon" "$REGION_CODE" "$2"; }
 
 # 时区转小时
 get_local_hour() {
-    local off=$(case "$REGION_CODE" in "US") echo -7;; "JP") echo +9;; "UK") echo +1;; "DE"|"FR") echo +2;; *) echo +8;; esac)
+    local off=${UTC_OFFSET:-+8}
     local h=$(( $(date -u +%H) + off ))
     [ $h -lt 0 ] && h=$((24 + h)) || [ $h -ge 24 ] && h=$((h - 24))
     echo $h
-}
-
-log() {
-    printf "[%s] [v%s] [%s] [Daemon] [%s] %s\n" \
-        "$(date '+%Y-%m-%d %H:%M:%S')" "${AGENT_VERSION:-3.4.0}" "$1" "$REGION_CODE" "$2" >> "${DIR}/logs/sentinel.log"
 }
 
 # 检查是否在活动时段 (8-22点)

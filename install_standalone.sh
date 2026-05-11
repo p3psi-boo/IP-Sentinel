@@ -62,6 +62,8 @@ STATE=$(select_item /tmp/states.txt "州/省")
 jq -r ".countries[] | select(.id==\"$REGION_CODE\") | .states[] | select(.id==\"$STATE\") | .cities[] | \"\(.id)|\(.name)\"" /tmp/map.json > /tmp/cities.txt
 CITY=$(select_item /tmp/cities.txt "城市")
 
+UTC_OFFSET=$(jq -r ".countries[] | select(.id==\"$REGION_CODE\") | .utc_offset" /tmp/map.json)
+
 rm -f /tmp/*.json /tmp/*.txt
 
 # 功能配置
@@ -107,11 +109,17 @@ else
     BIND_IP=""
 fi
 
-# 创建目录并拉取数据
-mkdir -p "${DIR}/core" "${DIR}/data/keywords" "${DIR}/data/regions/${REGION_CODE}/${STATE}" "${DIR}/logs"
+# 构建区域数据路径 (Default 州扁平化)
+if [ "$STATE" == "Default" ]; then
+    REGION_PATH="data/regions/${REGION_CODE}/${CITY}.json"
+    mkdir -p "${DIR}/data/regions/${REGION_CODE}"
+else
+    REGION_PATH="data/regions/${REGION_CODE}/${STATE}/${CITY}.json"
+    mkdir -p "${DIR}/data/regions/${REGION_CODE}/${STATE}"
+fi
 
-curl -sL "${REPO}/data/regions/${REGION_CODE}/${STATE}/${CITY}.json" -o "${DIR}/data/regions/${REGION_CODE}/${STATE}/${CITY}.json"
-JSON="${DIR}/data/regions/${REGION_CODE}/${STATE}/${CITY}.json"
+curl -sL "${REPO}/${REGION_PATH}" -o "${DIR}/${REGION_PATH}"
+JSON="${DIR}/${REGION_PATH}"
 [ ! -s "$JSON" ] && { echo "❌ 区域数据拉取失败"; exit 1; }
 
 REGION_NAME=$(jq -r '.region_name' "$JSON")
@@ -136,20 +144,18 @@ LOG_FILE="${DIR}/logs/sentinel.log"
 IP_PREF="$IP_PREF"
 PUBLIC_IP="$PUBLIC_IP"
 BIND_IP="$BIND_IP"
+UTC_OFFSET="$UTC_OFFSET"
 EOF
 
 chmod 600 "${DIR}/config.conf"
 
 # 部署组件
 echo -e "\n[5/5] 部署组件..."
-for f in core/standalone_daemon.sh core/updater.sh core/uninstall.sh data/user_agents.txt; do
+for f in core/standalone_daemon.sh core/updater.sh core/uninstall.sh core/utils.sh; do
     curl -sL "${REPO}/${f}" -o "${DIR}/${f}"
 done
 
-[ "$ENABLE_GOOGLE" == "true" ] && {
-    curl -sL "${REPO}/core/mod_google_curl_imp.sh" -o "${DIR}/core/mod_google_curl_imp.sh"
-    curl -sL "${REPO}/data/keywords/kw_${REGION_CODE}.txt" -o "${DIR}/data/keywords/kw_${REGION_CODE}.txt"
-}
+[ "$ENABLE_GOOGLE" == "true" ] && curl -sL "${REPO}/core/mod_google_curl_imp.sh" -o "${DIR}/core/mod_google_curl_imp.sh"
 [ "$ENABLE_TRUST" == "true" ] && curl -sL "${REPO}/core/mod_trust_curl_imp.sh" -o "${DIR}/core/mod_trust_curl_imp.sh"
 
 chmod +x ${DIR}/core/*.sh
@@ -160,7 +166,6 @@ echo "@reboot nohup bash ${DIR}/core/standalone_daemon.sh >> ${DIR}/logs/daemon.
 crontab /tmp/cron_clean && rm -f /tmp/cron_clean
 
 # 初始化并启动
-echo $(date +%s) > "${DIR}/core/.ua_last_update"
 nohup bash "${DIR}/core/standalone_daemon.sh" >> "${DIR}/logs/daemon.log" 2>&1 &
 
 echo -e "\n================================"

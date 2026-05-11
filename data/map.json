@@ -1,11 +1,11 @@
 {
-  "version": "3.1.0",
+  "version": "3.4.0",
   "updated_at": "2026-04-11",
   "countries": [
     {
       "id": "US",
       "name": "United States (美国)",
-      "keyword_file": "kw_US.txt",
+      "utc_offset": -7,
       "states": [
         {
           "id": "CA",
@@ -20,7 +20,7 @@
     {
       "id": "JP",
       "name": "Japan (日本)",
-      "keyword_file": "kw_JP.txt",
+      "utc_offset": 9,
       "states": [
         {
           "id": "Default",
@@ -34,7 +34,7 @@
     {
       "id": "UK",
       "name": "United Kingdom (英国)",
-      "keyword_file": "kw_UK.txt",
+      "utc_offset": 1,
       "states": [
         {
           "id": "Default",
@@ -48,7 +48,7 @@
     {
       "id": "DE",
       "name": "Germany (德国)",
-      "keyword_file": "kw_DE.txt",
+      "utc_offset": 2,
       "states": [
         {
           "id": "Default",
@@ -62,7 +62,7 @@
     {
       "id": "FR",
       "name": "France (法国)",
-      "keyword_file": "kw_FR.txt",
+      "utc_offset": 2,
       "states": [
         {
           "id": "Default",
@@ -76,7 +76,7 @@
     {
       "id": "SG",
       "name": "Singapore (新加坡)",
-      "keyword_file": "kw_SG.txt",
+      "utc_offset": 8,
       "states": [
         {
           "id": "Default",
@@ -90,7 +90,7 @@
     {
       "id": "HK",
       "name": "Hong Kong (香港)",
-      "keyword_file": "kw_HK.txt",
+      "utc_offset": 8,
       "states": [
         {
           "id": "Default",

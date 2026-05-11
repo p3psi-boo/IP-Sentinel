@@ -1,5 +1,5 @@
 #!/bin/bash
-# IP-Sentinel 热更新 - 简化版 (数据已改为运行时获取)
+# IP-Sentinel 维护脚本
 
 set -e
 
@@ -18,7 +18,7 @@ log "INFO" "开始维护"
 
 # 日志瘦身 (保留2000行)
 if [ -f "$LOG_FILE" ]; then
-    local lines=$(wc -l < "$LOG_FILE")
+    lines=$(wc -l < "$LOG_FILE")
     if [ "$lines" -gt 2000 ]; then
         tail -n 2000 "$LOG_FILE" > "${LOG_FILE}.tmp"
         mv "${LOG_FILE}.tmp" "$LOG_FILE"

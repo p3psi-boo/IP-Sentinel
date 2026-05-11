@@ -6,7 +6,7 @@ DIR="/opt/ip_sentinel"
 echo "卸载 IP-Sentinel..."
 
 # 停止进程
-for p in tg_daemon agent_daemon standalone_daemon webhook runner updater tg_report mod_google mod_trust; do
+for p in standalone_daemon mod_google mod_trust; do
     pkill -9 -f "$p" 2>/dev/null || true
 done
 

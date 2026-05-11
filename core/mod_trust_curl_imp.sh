@@ -1,5 +1,5 @@
 #!/bin/bash
-# IP-Sentinel Trust 模块 - curl-impersonate 版 (运行时数据版)
+# IP-Sentinel Trust 模块 - curl-impersonate 版
 
 set -e
 
@@ -12,18 +12,13 @@ REGION="${REGION_CODE:-US}"
 
 # 加载工具函数
 UTILS="${DIR}/core/utils.sh"
-[ -f "$UTILS" ] && source "$UTILS"
+[ -f "$UTILS" ] || { echo "utils.sh missing"; exit 1; }
+source "$UTILS"
 
 # 检测 curl-impersonate
-for cmd in curl_chrome131 curl_chrome130 curl_chrome129 curl_chrome128 curl_chrome125 curl_chrome120 curl_chrome116 curl_chrome; do
-    command -v "$cmd" >/dev/null 2>&1 && { CURL="$cmd"; break; }
-done
-[ -z "$CURL" ] && { echo "curl-impersonate not found" >&2; exit 1; }
+CURL=$(detect_curl_imp) || { echo "curl-impersonate not found" >&2; exit 1; }
 
-log() {
-    printf "[%s] [v%s] [%s] [Trust] [%s] %s\n" \
-        "$(date '+%Y-%m-%d %H:%M:%S')" "${AGENT_VERSION:-3.4.0}" "$1" "$REGION" "$2" | tee -a "${DIR}/logs/sentinel.log"
-}
+log() { log_sentinel "$1" "Trust" "$REGION" "$2"; }
 
 # 加载白名单
 JSON=$(find "${DIR}/data/regions" -name "*.json" 2>/dev/null | head -n1)

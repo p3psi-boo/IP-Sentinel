@@ -1,5 +1,5 @@
 #!/bin/bash
-# IP-Sentinel Google 模块 - curl-impersonate 版 (运行时数据版)
+# IP-Sentinel Google 模块 - curl-impersonate 版
 
 set -e
 
@@ -10,18 +10,13 @@ source "$CFG"
 
 # 加载工具函数
 UTILS="${DIR}/core/utils.sh"
-[ -f "$UTILS" ] && source "$UTILS"
+[ -f "$UTILS" ] || { echo "utils.sh missing"; exit 1; }
+source "$UTILS"
 
 # 检测 curl-impersonate
-for cmd in curl_chrome131 curl_chrome130 curl_chrome129 curl_chrome128 curl_chrome125 curl_chrome120 curl_chrome116 curl_chrome; do
-    command -v "$cmd" >/dev/null 2>&1 && { CURL="$cmd"; break; }
-done
-[ -z "$CURL" ] && { echo "curl-impersonate not found"; exit 1; }
+CURL=$(detect_curl_imp) || { echo "curl-impersonate not found"; exit 1; }
 
-log() {
-    printf "[%s] [v%s] [%s] [Google] [%s] %s\n" \
-        "$(date '+%Y-%m-%d %H:%M:%S')" "${AGENT_VERSION:-3.4.0}" "$1" "$REGION_CODE" "$2" >> "${DIR}/logs/sentinel.log"
-}
+log() { log_sentinel "$1" "Google" "$REGION_CODE" "$2"; }
 
 log "INFO" "启动 [$CURL] | 区域: $REGION_NAME"
 
@@ -43,7 +38,7 @@ fi
 mapfile -t KEYWORD_ARRAY <<< "$KEYWORDS"
 log "INFO" "关键词库: ${#KEYWORD_ARRAY[@]} 条"
 
-# 坐标抖动: base, range(米)
+# 坐标抖动
 jitter() {
     awk "BEGIN {print $1 + ((($RANDOM % 2000) - 1000) / 1000000)}"
 }
@@ -71,15 +66,12 @@ log "INFO" "UA: ${SESSION_UA:0:50}..."
 # 执行动作
 i=1
 while [ $i -le $ACTIONS ]; do
-    # 随机参数
     local_lat=$(jitter "$LAT" 1)
     local_lon=$(jitter "$LON" 1)
     kw_idx=$((RANDOM % ${#KEYWORD_ARRAY[@]}))
     kw="${KEYWORD_ARRAY[$kw_idx]}"
-    # URL 编码关键词
     kw_encoded=$(printf '%s' "$kw" | jq -sRr @uri 2>/dev/null || echo "$kw")
 
-    # 构建 URL
     case $((1 + RANDOM % 4)) in
         1) url="https://www.google.com/search?q=${kw_encoded}&${LANG_PARAMS}" ;;
         2) url="https://news.google.com/home?${LANG_PARAMS}" ;;
@@ -90,7 +82,6 @@ while [ $i -le $ACTIONS ]; do
     code=$($CURL $CURL_OPTS $IP_FLAG -m 15 -s -L -o /dev/null -w "%{http_code}" -H "User-Agent: $SESSION_UA" "$url")
     log "EXEC" "[$i/$ACTIONS] HTTP:$code | $local_lat,$local_lon | kw:${kw:0:15}"
 
-    # 休眠 (非最后一次)
     if [ $i -lt $ACTIONS ]; then
         sleep $((90 + RANDOM % 61))
     fi

@@ -37,7 +37,7 @@ tail -f /opt/ip_sentinel/logs/daemon.log
 
 日志格式示例：
 ```
-[2025-01-15 14:30:25] [v3.4.0] [INFO] [Google] [US] 启动 [curl_chrome125]
+[2025-01-15 14:30:25] [v3.4.0] [INFO] [Daemon] [US] 启动 [curl_chrome125]
 [2025-01-15 14:30:45] [v3.4.0] [EXEC] [Google] [US] [1/8] HTTP:200 | 34.0522,-118.2439
 [2025-01-15 14:30:45] [v3.4.0] [SCORE] [Google] [US] ✅ 目标达成 (com)
 ```
@@ -86,28 +86,21 @@ IP-Sentinel/
 │   ├── standalone_daemon.sh    # 主调度器：随机休眠、选模块、维持单例
 │   ├── mod_google_curl_imp.sh  # Google 模块：随机搜索/地图/新闻请求
 │   ├── mod_trust_curl_imp.sh   # Trust 模块：白名单站点随机访问
-│   ├── updater.sh              # 数据刷新：UA库、关键词、区域规则
+│   ├── utils.sh                # 共享工具：UA生成、日志、curl检测
+│   ├── updater.sh              # 日志裁剪、文件完整性检查
 │   └── uninstall.sh            # 清理脚本
 ├── data/                       # 静态数据
-│   ├── keywords/kw_{CC}.txt    # 各国搜索词库
 │   ├── regions/{CC}/...        # 区域配置（坐标、白名单）
-│   ├── map.json                # 国家-州-市索引
-│   └── user_agents.txt         # 浏览器指纹库（暂未消费）
-├── scripts/                    # 数据生成
-│   ├── fetch_trends.py         # 抓取 Google Trends RSS
-│   └── ua_generator.py         # 生成 4000 条 UA
-├── telemetry/worker.js         # Cloudflare Worker 统计（独立代码）
-├── .github/workflows/          # 自动化任务
-│   ├── daily_keywords.yml      # 每日更新关键词
-│   └── ua_factory.yml          # 每月生成 UA
-└── install_standalone.sh       # 安装入口
+│   └── map.json                # 国家-州-市索引（含 UTC 偏移）
+├── install_standalone.sh       # 安装入口
+└── version.txt                 # 版本号
 ```
 
 ### 调度逻辑
 
 `standalone_daemon.sh` 主循环：
 
-1. **时区感知**：按区域代码硬编码偏移计算本地小时（US=-7, JP=+9, UK=+1, DE/FR=+2, 其他=+8）
+1. **时区感知**：按 `map.json` 中的 `utc_offset` 计算本地小时
 2. **活动时段**：仅 08:00-22:00（本地时间）运行
 3. **执行概率**：每天固定种子计算，约 60% 概率执行
 4. **计划次数**：每天 1-3 次随机
@@ -118,7 +111,7 @@ IP-Sentinel/
 
 ### Google 模块细节
 
-- 读取 `data/keywords/kw_{REGION_CODE}.txt`
+- 实时拉取 Google Trends RSS 作为关键词
 - 坐标抖动：基准坐标 ±0.001°（约 100m）
 - 单次会话：6-10 个请求
 - 请求类型随机：Search / News / Maps / connectivitycheck
@@ -141,26 +134,14 @@ IP-Sentinel/
 ### 更新逻辑
 
 `updater.sh`：
-
-- UA 库：30 天周期
-- 关键词库：每次执行前拉取
-- 区域规则：每次执行前拉取
 - 日志裁剪：保留最后 2000 行
-
-### 遥测 Worker
-
-`telemetry/worker.js` 是独立的 Cloudflare Worker，提供：
-- `/ping/agent` 和 `/ping/master`：计数器自增
-- `/stats/agent` 和 `/stats/master`：Shields.io 徽章 JSON
-
-当前安装/运行脚本**未调用**这些端点，仅作为独立代码存在。
+- 核心文件完整性检查
 
 ### 扩展开发
 
 **添加新区域**：
-1. 在 `data/map.json` 添加国家/城市节点
-2. 在 `data/regions/` 创建 `{CC}/{State}/{City}.json`
-3. 创建 `data/keywords/kw_{CC}.txt`
+1. 在 `data/map.json` 添加国家/城市节点（含 `utc_offset`）
+2. 在 `data/regions/` 创建 `{CC}/{City}.json`（单州国家）或 `{CC}/{State}/{City}.json`（多州国家）
 
 **区域 JSON 格式**：
 ```json
